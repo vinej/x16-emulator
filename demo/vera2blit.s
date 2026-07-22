@@ -84,16 +84,8 @@ have:
     stz dlg_open
     stz lprev
     jsr pal8
-    jsr pal_extra              ; dialog + indicator colours (252..255)
+    jsr pal_extra              ; dialog colours (252..255)
     jsr fill8
-    jsr selftest
-    ldx #254
-    cmp #0
-    beq @okc
-    ldx #255
-@okc:
-    txa
-    jsr status_bar
     jsr make_sprite_img
     jsr seed_init
     jsr make_sprites
@@ -124,6 +116,7 @@ have:
     jsr restore_under
 @noopen:
     stz BMP_CTRL
+    jsr restore_video
     rts
 
 ; ---- left click handler ----
@@ -513,6 +506,17 @@ setup_video:
     trb VERA_DC_VIDEO
     lda #SPRITES_EN
     tsb VERA_DC_VIDEO
+    rts
+
+; ---- undo setup_video/show_mouse: return to the normal text screen ----
+restore_video:
+    stz VERA_CTRL
+    lda #SPRITES_EN
+    trb VERA_DC_VIDEO          ; sprite plane off (removes sprites + mouse)
+    lda #$20                   ; layer 1 (text) back on
+    tsb VERA_DC_VIDEO
+    lda #0
+    jsr MOUSE_CONFIG           ; stop the mouse driver
     rts
 
 show_mouse:

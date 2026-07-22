@@ -17,6 +17,7 @@ BMP_PALADR = $9F66
 BMP_PALLO  = $9F67
 BMP_PALHI  = $9F68
 CHROUT     = $FFD2
+GETIN      = $FFE4
 
 .segment "LOADADDR"
     .word $0801
@@ -46,6 +47,9 @@ start:
 
 have_dev:
     jsr print_title
+@flush:                    ; drain the pending RUN <CR> so we don't exit at once
+    jsr GETIN
+    bne @flush
 main_loop:
     ; --- 8bpp ---
     stz BMP_CTRL            ; layer off (title text shows while filling)
@@ -54,6 +58,7 @@ main_loop:
     lda #$03               ; enable, mode 1 (640x480x8bpp)
     sta BMP_CTRL
     jsr delay
+    bne @quit              ; key -> back to BASIC
     ; --- 4bpp ---
     stz BMP_CTRL
     jsr fill4
@@ -61,7 +66,13 @@ main_loop:
     lda #$05               ; enable, mode 2 (640x480x4bpp)
     sta BMP_CTRL
     jsr delay
+    bne @quit
     jmp main_loop
+@quit:
+    stz BMP_CTRL           ; bitmap off
+    lda #$93
+    jsr CHROUT             ; clear screen -> clean BASIC prompt
+    rts
 
 ; ===== 8bpp framebuffer: diagonal (x+y) gradient over 256 colours =====
 fill8:
@@ -204,7 +215,7 @@ print_title:
 @done:
     rts
 
-delay:                      ; ~2 s busy wait
+delay:                      ; ~2 s wait; abort early on a key.  Z=0 key / Z=1 timeout
     lda #48
     sta dcnt
 @o:
@@ -216,8 +227,12 @@ delay:                      ; ~2 s busy wait
     bne @y
     inx
     bne @x
+    jsr GETIN
+    bne @done              ; key pressed -> return (Z=0)
     dec dcnt
     bne @o
+    lda #0                 ; timeout -> Z=1
+@done:
     rts
 
 .segment "RODATA"

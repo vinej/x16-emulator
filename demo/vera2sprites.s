@@ -72,17 +72,7 @@ start:
 
 have:
     jsr pal8                   ; 256-colour gradient palette
-    jsr pal_indic              ; entries 254=green, 255=red (status bar)
-    jsr fill8                  ; draw the gradient (proves basic write)
-    jsr selftest               ; write pattern off-screen, read it back -> A=mismatches
-    ; status bar colour: green (pass) or red (fail)
-    ldx #254
-    cmp #0
-    beq @okc
-    ldx #255
-@okc:
-    txa
-    jsr status_bar             ; A = colour -> full-width bar at the top
+    jsr fill8                  ; draw the gradient (full-screen, including the top)
 
     jsr make_sprite_img        ; a 16x16 diamond in VRAM $10000
     jsr seed_init
@@ -97,7 +87,8 @@ have:
     jsr MOUSE_SCAN             ; (a tight loop re-applies the SMC delta = too fast)
     jsr GETIN
     beq @loop
-    stz BMP_CTRL               ; a key -> bitmap off, back to BASIC
+    stz BMP_CTRL               ; a key -> bitmap off
+    jsr restore_video          ; text layer back on, sprites + mouse off
     rts
 
 ; ===== 8bpp gradient: pixel = (x+y) & 255 =====
@@ -339,6 +330,17 @@ setup_video:
     trb VERA_DC_VIDEO          ; layer0/1 off (only sprites over the bitmap)
     lda #SPRITES_EN
     tsb VERA_DC_VIDEO          ; sprite plane on
+    rts
+
+; ---- undo setup_video/show_mouse: return to the normal text screen ----
+restore_video:
+    stz VERA_CTRL
+    lda #SPRITES_EN
+    trb VERA_DC_VIDEO          ; sprite plane off (removes sprites + mouse)
+    lda #$20                   ; layer 1 (text) back on
+    tsb VERA_DC_VIDEO
+    lda #0
+    jsr MOUSE_CONFIG           ; stop the mouse driver
     rts
 
 ; ===== KERNAL mouse pointer (sprite 0), 640x480 field =====

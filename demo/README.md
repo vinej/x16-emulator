@@ -9,7 +9,7 @@ X16-MiSTer FPGA core.
 |---|---|---|
 | `vera2fill.s` | `VERA2FILL.PRG` | Switch to 8bpp, fill the whole screen fast with the **blit** (doubling a 16-colour seed), wait for a key, return to BASIC. |
 | `vera2demo.s` | `VERA2DEMO.PRG` | Auto-cycles between an 8bpp 256-colour diagonal gradient and 4bpp 16-colour bands. |
-| `vera2sprites.s` | `VERA2SPRITES.PRG` | 8bpp gradient + random **VERA sprites** + **mouse** (passthru); a top status bar turns **green** when the `$9F65` **write / read-back** self-test passes. |
+| `vera2sprites.s` | `VERA2SPRITES.PRG` | 8bpp gradient + random **VERA sprites** + **mouse** (passthru), full-screen. |
 | `vera2blit.s` | `VERA2BLIT.PRG` | Everything above plus **save-under**: **left-click** the gradient drops a message box (band saved to scratch via the blit), **click the box** to restore it exactly. |
 
 `vera2demo.cfg` is the cc65 linker config all four use (a minimal `$0801` PRG with
