@@ -415,6 +415,9 @@ usage()
 	printf("-cartbin <romfile.bin>\n");
 	printf("\tLoads a raw cartridge file starting at ROM bank 32. After\n");
 	printf("\tloading, all of the affected banks will function as RAM.\n");
+	printf("-cartram\n");
+	printf("\tAll cart banks 32-255 become writable RAM (zero-filled), no\n");
+	printf("\tfile needed -- matches the X16-MiSTer core's cart-RAM behavior.\n");
 	printf("-serial\n");
 	printf("\tConnect host fs through Serial Bus [experimental]\n");
 	printf("-nohostieee / -nohostfs\n");
@@ -788,6 +791,14 @@ main(int argc, char **argv)
 			cartridge_import_files(argv, 1, 32, CART_BANK_INITIALIZED_RAM, 0);
 			argc--;
 			argv++;
+		} else if (!strcmp(argv[0], "-cartram")) {
+			// like the X16-MiSTer core: cart banks 32-255 are all writable
+			// RAM (zero-filled), no .crt/.bin needed.  Lets a program use the
+			// cartridge space as extra RAM identically on core and emulator.
+			argc--;
+			argv++;
+			cartridge_new();
+			cartridge_fill(32, 255, CART_BANK_INITIALIZED_RAM, 0);
 		} else if (!strcmp(argv[0], "-warp")) {
 			argc--;
 			argv++;
