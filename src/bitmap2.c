@@ -17,13 +17,37 @@ static uint8_t  bmp_fb[BMP2_FB_SIZE];
 static bool     bmp_enable;
 static uint8_t  bmp_mode;          // 1 = 640x480x8bpp, 2 = 640x480x4bpp
 static bool     bmp_passthru;      // CTRL[3]: VERA sprites/opaque over the bitmap
-static uint32_t bmp_ptr;           // 19-bit read/write pointer (shared; blit src)
+static uint32_t bmp_ptr;           // 20-bit read/write pointer (shared; blit src)
+static uint8_t  bmp_incr;          // ADDR_H[7:4]: DATA auto-increment stride select
 static uint32_t bmp_blit_dst;      // blit destination byte address
 static uint32_t bmp_blit_len;      // blit length in bytes
 static uint8_t  bmp_pal_lo;        // latched {G,B} between PAL_LO and PAL_HI
 static uint8_t  bmp_pal_cursor;    // palette write cursor
 static uint16_t bmp_pal[256];      // RGB444 entries
 static uint32_t bmp_pal_bgra[256]; // precomputed 0x00RRGGBB (framebuffer format)
+
+// DATA auto-increment stride, selected by ADDR_H[7:4] -- the same bit position
+// as VERA's ADDRx_H increment field, but this table is SIGNED so both
+// directions fit in one field (VERA needs a separate DECR bit).  Index 0 = +1,
+// so "set the pointer and stream" is the default.  Mirrors the `step` table in
+// rtl/bitmap_regs.sv -- keep the two in sync.
+static const int16_t bmp_step[16] = {
+	   1,      // 0: linear streaming (reset default)
+	   0,      // 1: hold -- 4bpp read-modify-write, re-read the same byte
+	   2, 4, 8, 16, 32, 64, 128, 256,
+	 320,      // A: 4bpp row stride, one pixel down
+	 640,      // B: 8bpp row stride, one pixel down
+	  -1,      // C: reverse streaming / overlapping copy
+	  -2,
+	-320,      // E: 4bpp row stride, one pixel up
+	-640       // F: 8bpp row stride, one pixel up
+};
+
+static void
+bmp_advance(void)
+{
+	bmp_ptr = (bmp_ptr + (uint32_t)bmp_step[bmp_incr]) & BMP2_FB_MASK;
+}
 
 static void
 recalc_pal_entry(uint8_t i)
@@ -42,6 +66,7 @@ bitmap2_reset(void)
 	bmp_mode = 0;
 	bmp_passthru = false;
 	bmp_ptr = 0;
+	bmp_incr = 0;
 	bmp_blit_dst = 0;
 	bmp_blit_len = 0;
 	bmp_pal_lo = 0;
@@ -60,9 +85,12 @@ bitmap2_read(uint8_t reg, bool debugOn)
 		case 0x0: // CTRL: {passthru, mode, enable}
 			return (uint8_t)((bmp_passthru ? 8 : 0) | (bmp_mode << 1) | (bmp_enable ? 1 : 0));
 		case 0x1: return 0xB5;                                              // ID
-		case 0x5: { // DATA read-back: byte at the pointer, auto-increment
+		case 0x2: return (uint8_t)( bmp_ptr        & 0xff);                 // ADDR_L
+		case 0x3: return (uint8_t)((bmp_ptr >>  8) & 0xff);                 // ADDR_M
+		case 0x4: return (uint8_t)((bmp_incr << 4) | ((bmp_ptr >> 16) & 0xf)); // ADDR_H
+		case 0x5: { // DATA read-back: byte at the pointer, then advance by the stride
 			uint8_t v = bmp_fb[bmp_ptr & BMP2_FB_MASK];
-			if (!debugOn) bmp_ptr = (bmp_ptr + 1) & BMP2_FB_MASK;
+			if (!debugOn) bmp_advance();
 			return v;
 		}
 		default:  return 0x00;
@@ -80,10 +108,13 @@ bitmap2_write(uint8_t reg, uint8_t value)
 			break;
 		case 0x2: bmp_ptr = (bmp_ptr & 0xFFF00u) |  (uint32_t)value;                break; // ADDR_L
 		case 0x3: bmp_ptr = (bmp_ptr & 0xF00FFu) | ((uint32_t)value << 8);          break; // ADDR_M
-		case 0x4: bmp_ptr = (bmp_ptr & 0x0FFFFu) | ((uint32_t)(value & 0xF) << 16); break; // ADDR_H
-		case 0x5: // DATA -> framebuffer, auto-increment
+		case 0x4: // ADDR_H = {incr[3:0], ptr[19:16]} -- one store sets both
+			bmp_ptr  = (bmp_ptr & 0x0FFFFu) | ((uint32_t)(value & 0xF) << 16);
+			bmp_incr = (value >> 4) & 0xF;
+			break;
+		case 0x5: // DATA -> framebuffer, then advance by the stride
 			bmp_fb[bmp_ptr & BMP2_FB_MASK] = value;
-			bmp_ptr = (bmp_ptr + 1) & BMP2_FB_MASK;
+			bmp_advance();
 			break;
 		case 0x6: bmp_pal_cursor = value; break;   // PAL_IDX
 		case 0x7: bmp_pal_lo = value;     break;   // PAL_LO {G,B}
